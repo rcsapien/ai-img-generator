@@ -49,8 +49,17 @@ export async function POST(req: NextRequest) {
     }
 
     if (!imageFile || !prompt) {
-      console.error("Missing required fields", { hasImage: !!imageFile, prompt });
-      return NextResponse.json({ error: 'Image and prompt are required' }, { status: 400 });
+      console.error("Missing required fields", { 
+        hasImage: !!imageFile, 
+        imageDetails: imageFile ? {
+          type: imageFile.type,
+          size: imageFile.size,
+          name: imageFile.name
+        } : null,
+        promptLength: prompt ? prompt.length : 0,
+        prompt: prompt
+      });
+      return NextResponse.json({ error: 'Image and prompt are required', details: { hasImage: !!imageFile, promptProvided: !!prompt } }, { status: 400 });
     }
 
     const apiKey = process.env.OPENAI_API_KEY;

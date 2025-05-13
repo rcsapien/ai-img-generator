@@ -135,6 +135,8 @@ export default function ImageGeneratorPage() {
         form.append("size", size);
         form.append("n", String(n));
         console.log("[handleGenerate] Redirecting to /api/edit (image edit)");
+        console.log("[handleGenerate] Debug - prompt:", prompt);
+        console.log("[handleGenerate] Debug - image:", inputImage ? { type: inputImage.type, size: inputImage.size, name: inputImage.name } : null);
         response = await fetch("/api/edit", {
           method: "POST",
           body: form,
