@@ -87,10 +87,11 @@ TO BE CONTINUED… appears handwritten in the sky like vapor.`;
 
 export default function StoryboardPage() {
   const [masterPrompt, setMasterPrompt] = useState("");
-  const [lyrics, setLyrics] = useState("");
+  const [songName, setSongName] = useState("");
   const [storyline, setStoryline] = useState("");
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingStoryline, setLoadingStoryline] = useState(false);
   const [progress, setProgress] = useState(0);
 
   const generateImage = async (prompt: string) => {
@@ -125,7 +126,7 @@ export default function StoryboardPage() {
       const sbRes = await fetch("/api/storyboard", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ masterPrompt, lyrics, storyline }),
+        body: JSON.stringify({ masterPrompt, storyline }),
       });
       const storyboard: Scene[] = await sbRes.json();
       if (!Array.isArray(storyboard)) {
@@ -193,6 +194,40 @@ export default function StoryboardPage() {
   const loadPreset = () => {
     setMasterPrompt(PRESET_MASTER);
     setStoryline(PRESET_STORYLINE);
+    setSongName("");
+  };
+
+  const generateStorylineFromSong = async () => {
+    if (!songName) {
+      alert("Please enter a song name");
+      return;
+    }
+    
+    setLoadingStoryline(true);
+    try {
+      const res = await fetch("/api/song-storyline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ songName }),
+      });
+      
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to generate storyline");
+      }
+      
+      const data = await res.json();
+      if (data.storyline) {
+        setStoryline(data.storyline);
+      } else {
+        throw new Error("No storyline returned");
+      }
+    } catch (err) {
+      console.error("Error generating storyline:", err);
+      alert("Failed to generate storyline: " + (err as Error).message);
+    } finally {
+      setLoadingStoryline(false);
+    }
   };
 
   return (
@@ -211,15 +246,26 @@ export default function StoryboardPage() {
               onChange={(e) => setMasterPrompt(e.target.value)}
             />
           </div>
+          
           <div className="space-y-2">
-            <Label htmlFor="lyrics">Lyrics (first 90s)</Label>
-            <Textarea
-              id="lyrics"
-              placeholder="[00:00] Line 1..."
-              value={lyrics}
-              onChange={(e) => setLyrics(e.target.value)}
-            />
+            <Label htmlFor="songName">Song name</Label>
+            <div className="flex space-x-2">
+              <Input
+                id="songName"
+                placeholder="Enter a song name..."
+                value={songName}
+                onChange={(e) => setSongName(e.target.value)}
+              />
+              <Button 
+                variant="outline" 
+                onClick={generateStorylineFromSong}
+                disabled={loadingStoryline || !songName}
+              >
+                {loadingStoryline ? "Generating..." : "Generate Storyline"}
+              </Button>
+            </div>
           </div>
+
           <div className="space-y-2">
             <Label htmlFor="storyline">Storyline</Label>
             <Textarea
