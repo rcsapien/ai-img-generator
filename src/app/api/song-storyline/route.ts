@@ -50,16 +50,28 @@ export async function POST(req: NextRequest) {
       }, { status: openaiRes.status });
     }
 
-    const storyline = (
-      data.output_text ??
-      data.output?.[0]?.content?.[0]?.text ??
-      data.output?.[0]?.text ??
-      (() => {
-        const msg = data.output?.find((i: any) => i.type === 'message');
-        return msg?.content?.find((c: any) => c.type === 'output_text')?.text;
-      })() ??
-      ''
-    ).trim();
+    let storyline = '';
+    if (typeof data.output_text === 'string') {
+      storyline = data.output_text.trim();
+    }
+
+    if (!storyline && Array.isArray(data.output)) {
+      for (const item of data.output) {
+        if (item.type === 'output_text' && typeof item.text === 'string') {
+          storyline = item.text.trim();
+          break;
+        }
+        if (item.type === 'message' && Array.isArray(item.content)) {
+          const txtNode = item.content.find((c: any) => c.type === 'output_text' && typeof c.text === 'string');
+          if (txtNode?.text) {
+            storyline = txtNode.text.trim();
+            break;
+          }
+        }
+      }
+    }
+
+    console.log('extracted storyline length', storyline.length);
 
     if (!storyline) {
       return NextResponse.json({ error: 'No storyline returned from model' }, { status: 500 });

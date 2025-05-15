@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
 
 interface Scene {
   scene_name: string;
@@ -230,6 +232,19 @@ export default function StoryboardPage() {
     }
   };
 
+  const handleDownloadAll = async () => {
+    if (!scenes.some((s) => s.image)) return;
+    const zip = new JSZip();
+    scenes.forEach((scene, idx) => {
+      if (scene.image?.startsWith("data:image/")) {
+        const base64 = scene.image.split(",")[1];
+        zip.file(`scene_${idx + 1}.png`, base64, { base64: true });
+      }
+    });
+    const blob = await zip.generateAsync({ type: "blob" });
+    saveAs(blob, "storyboard_images.zip");
+  };
+
   return (
     <div className="container mx-auto p-6 max-w-4xl space-y-6">
       <Card className="p-6 space-y-4 shadow-xl">
@@ -280,6 +295,9 @@ export default function StoryboardPage() {
           </Button>
           <Button onClick={handleGenerate} disabled={loading}>
             {loading ? "Generating..." : "Generate"}
+          </Button>
+          <Button onClick={handleDownloadAll} disabled={!scenes.some((s) => s.image)}>
+            Download All Images
           </Button>
           {loading && <Progress value={progress} />}
         </CardContent>
