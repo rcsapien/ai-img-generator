@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import Image from "next/image";
 import {
   Card,
@@ -7,6 +7,7 @@ import {
   CardTitle,
   CardContent,
 } from "@/components/ui/card";
+import Slideshow from "@/components/Slideshow";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -96,6 +97,8 @@ export default function StoryboardPage() {
   const [loading, setLoading] = useState(false);
   const [loadingStoryline, setLoadingStoryline] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [slideshowOpen, setSlideshowOpen] = useState(false);
+  const [slideshowIndex, setSlideshowIndex] = useState(0);
 
   const generateImage = async (prompt: string) => {
     const res = await fetch("/api/generate", {
@@ -246,6 +249,19 @@ export default function StoryboardPage() {
     saveAs(blob, "storyboard_images.zip");
   };
 
+  // Open slideshow with the selected image
+  const openSlideshow = (index: number) => {
+    setSlideshowIndex(index);
+    setSlideshowOpen(true);
+  };
+
+  // Get all valid images for the slideshow
+  const slideshowImages = useMemo(() => {
+    return scenes
+      .filter(scene => scene.image)
+      .map(scene => scene.image as string);
+  }, [scenes]);
+
   return (
     <div className="container mx-auto p-6 max-w-4xl space-y-6">
       <Card className="p-6 space-y-4 shadow-xl">
@@ -318,15 +334,25 @@ export default function StoryboardPage() {
                 <p className="italic text-sm text-purple-700">&ldquo;{(scene as Scene & { lyric_excerpt?: string }).lyric_excerpt}&rdquo;</p>
               )}
               {scene.image ? (
-                <div className="relative w-full h-64">
+                <div className="relative w-full h-64 group">
                   <Image
                     src={scene.image}
                     alt={scene.scene_name}
-                    className="rounded"
+                    className="rounded cursor-pointer"
                     fill
                     unoptimized
                     style={{ objectFit: 'contain' }}
+                    onClick={() => openSlideshow(scenes.findIndex(s => s.image === scene.image))}
                   />
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button 
+                      variant="secondary" 
+                      onClick={() => openSlideshow(scenes.findIndex(s => s.image === scene.image))}
+                      className="bg-black/50 text-white hover:bg-black/70"
+                    >
+                      View Fullscreen
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="w-full h-64 bg-gray-100 flex items-center justify-center text-sm text-gray-500">
@@ -355,6 +381,28 @@ export default function StoryboardPage() {
           </Card>
         ))}
       </div>
+
+      {/* Start Slideshow Button */}
+      {scenes.some(s => s.image) && (
+        <div className="flex justify-center mt-6">
+          <Button 
+            onClick={() => openSlideshow(0)}
+            size="lg"
+            className="px-8 py-6 text-lg"
+          >
+            Start Slideshow
+          </Button>
+        </div>
+      )}
+
+      {/* Slideshow component */}
+      {slideshowOpen && slideshowImages.length > 0 && (
+        <Slideshow
+          images={slideshowImages}
+          isOpen={slideshowOpen}
+          onClose={() => setSlideshowOpen(false)}
+        />
+      )}
     </div>
   );
 }
