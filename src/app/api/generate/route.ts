@@ -50,9 +50,10 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json(response, { status: 200 });
-    } catch (error: any) {
+    } catch (error: Error | unknown) {
       // Automatically retry once if moderation blocked
-      const code = error?.error?.code || error?.error?.type;
+      const errorObj = error as { error?: { code?: string; type?: string }, status?: number }; 
+      const code = errorObj?.error?.code || errorObj?.error?.type;
       if (code === 'content_policy_violation') {
         console.warn('Moderation blocked request, retrying once...');
         try {
@@ -69,14 +70,15 @@ export async function POST(req: NextRequest) {
             ...(moderation && { moderation }),
           });
           return NextResponse.json(retryRes, { status: 200 });
-        } catch (err: any) {
+        } catch (err: Error | unknown) {
           console.error('OpenAI retry failed', err);
-          return NextResponse.json({ error: 'OpenAI request failed', details: String(err) }, { status: err?.status || 500 });
+          const errorObj = err as { status?: number };
+          return NextResponse.json({ error: 'OpenAI request failed', details: String(err) }, { status: errorObj?.status || 500 });
         }
       }
 
       console.error('OpenAI image error', error);
-      return NextResponse.json({ error: 'OpenAI request failed', details: String(error) }, { status: error?.status || 500 });
+      return NextResponse.json({ error: 'OpenAI request failed', details: String(error) }, { status: errorObj?.status || 500 });
     }
   } catch (err) {
     return NextResponse.json({ error: 'Error generating image', details: String(err) }, { status: 500 });

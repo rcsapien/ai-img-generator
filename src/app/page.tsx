@@ -19,9 +19,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Loader2, Image as ImageIcon } from "lucide-react";
+import Image from "next/image";
 
 import { Dialog } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import Slideshow from "@/components/Slideshow";
 
 export default function ImageGeneratorPage() {
   const [prompt, setPrompt] = useState("");
@@ -42,6 +44,9 @@ export default function ImageGeneratorPage() {
   const [editedImages, setEditedImages] = useState<{ [idx: number]: string }>({});
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
+  
+  // Slideshow state
+  const [slideshowOpen, setSlideshowOpen] = useState(false);
 
   // Handle opening edit modal
   const handleOpenEdit = (idx: number) => {
@@ -87,15 +92,7 @@ export default function ImageGeneratorPage() {
     }
   };
 
-  // Helper to convert file to base64
-  function fileToBase64(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  }
+  // NOTE: fileToBase64 was removed as it was unused
 
   // Simple fake progress animation while request is pending
   useEffect(() => {
@@ -271,11 +268,16 @@ export default function ImageGeneratorPage() {
             {resultImages.map((src, idx) => (
               <Card key={idx} className="overflow-hidden">
                 <CardContent className="p-0">
-                  <img
-                    src={src}
-                    alt={`Result ${idx + 1}`}
-                    className="w-full object-cover"
-                  />
+                  <div className="relative w-full aspect-square">
+                    <Image
+                      src={src}
+                      alt={`Result ${idx + 1}`}
+                      className="object-cover"
+                      fill
+                      priority
+                      unoptimized
+                    />
+                  </div>
                   <a
                     href={src}
                     download={`image_${idx + 1}.${outputFormat}`}
@@ -295,11 +297,16 @@ export default function ImageGeneratorPage() {
                   {editedImages[idx] && (
                     <div className="mt-4">
                       <Label>Edited Image:</Label>
-                      <img
-                        src={editedImages[idx]}
-                        alt={`Edited Result ${idx + 1}`}
-                        className="w-full object-cover border border-dashed border-gray-400 mt-2"
-                      />
+                      <div className="relative w-full aspect-square border border-dashed border-gray-400 mt-2">
+                        <Image
+                          src={editedImages[idx]}
+                          alt={`Edited Result ${idx + 1}`}
+                          className="object-cover"
+                          fill
+                          priority
+                          unoptimized
+                        />
+                      </div>
                     </div>
                   )}
                 </CardContent>
@@ -308,6 +315,30 @@ export default function ImageGeneratorPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Generate Slideshow Button */}
+      {resultImages.length > 0 && (
+        <div className="mt-8 text-center">
+          <Button 
+            onClick={() => setSlideshowOpen(true)}
+            className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold py-3 px-6 rounded-full shadow-lg transition-all duration-300 transform hover:scale-105"
+            size="lg"
+          >
+            Generate Slideshow
+          </Button>
+        </div>
+      )}
+
+      {/* Slideshow Component */}
+      <Slideshow 
+        images={[
+          ...resultImages,
+          ...Object.values(editedImages)
+        ].filter(Boolean)}
+        isOpen={slideshowOpen}
+        onClose={() => setSlideshowOpen(false)}
+      />
+
       {/* Edit Modal */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <div className="fixed inset-0 bg-black bg-opacity-30 z-50 flex items-center justify-center">

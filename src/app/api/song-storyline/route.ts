@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
           break;
         }
         if (item.type === 'message' && Array.isArray(item.content)) {
-          const txtNode = item.content.find((c: any) => c.type === 'output_text' && typeof c.text === 'string');
+          const txtNode = item.content.find((c: { type: string; text?: string }) => c.type === 'output_text' && typeof c.text === 'string');
           if (txtNode?.text) {
             storyline = txtNode.text.trim();
             break;

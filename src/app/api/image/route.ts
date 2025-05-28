@@ -43,9 +43,10 @@ export async function POST(req: NextRequest) {
         ...(moderation && { moderation })
       });
       return NextResponse.json(response, { status: 200 });
-    } catch (error: any) {
+    } catch (error: Error | unknown) {
       console.error('OpenAI image error', error);
-      return NextResponse.json({ error: 'OpenAI request failed', details: String(error) }, { status: error?.status || 500 });
+      const errorObj = error as { status?: number };
+      return NextResponse.json({ error: 'OpenAI request failed', details: String(error) }, { status: errorObj?.status || 500 });
     }
   } catch (err) {
     return NextResponse.json({ error: 'Error generating image', details: String(err) }, { status: 500 });

@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
     let imageFile: File | null = null;
     let maskFile: File | null = null;
     let prompt = '';
-    let body: any;
+    let body: Record<string, string> = {};
 
     const contentType = req.headers.get('content-type') || '';
     console.log('[edit API] Content-Type:', contentType);

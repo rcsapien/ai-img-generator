@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from "react";
+import Image from "next/image";
 import {
   Card,
   CardHeader,
@@ -313,15 +314,20 @@ export default function StoryboardPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <p>{scene.scene_description}</p>
-              {scene as any && (scene as any).lyric_excerpt && (
-                <p className="italic text-sm text-purple-700">“{(scene as any).lyric_excerpt}”</p>
+              {scene && (scene as Scene & { lyric_excerpt?: string }).lyric_excerpt && (
+                <p className="italic text-sm text-purple-700">&ldquo;{(scene as Scene & { lyric_excerpt?: string }).lyric_excerpt}&rdquo;</p>
               )}
               {scene.image ? (
-                <img
-                  src={scene.image}
-                  alt={scene.scene_name}
-                  className="w-full h-auto rounded"
-                />
+                <div className="relative w-full h-64">
+                  <Image
+                    src={scene.image}
+                    alt={scene.scene_name}
+                    className="rounded"
+                    fill
+                    unoptimized
+                    style={{ objectFit: 'contain' }}
+                  />
+                </div>
               ) : (
                 <div className="w-full h-64 bg-gray-100 flex items-center justify-center text-sm text-gray-500">
                   {loading ? "Generating image..." : "No image"}
