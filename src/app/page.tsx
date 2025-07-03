@@ -1,29 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { Loader2, Image as ImageIcon } from "lucide-react";
-import Image from "next/image";
-
-import { Dialog } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
+import { Loader2 } from "lucide-react";
 import { ProgressiveImage } from "@/components/ui/progressive-image";
 import { useStreamingImageGeneration } from "@/hooks/useStreamingImageGeneration";
 
@@ -197,107 +175,113 @@ export default function ImageGeneratorPage() {
   };
 
   return (
-    <div className="container mx-auto p-6 max-w-3xl">
-      <Card className="shadow-2xl p-6">
-        <CardHeader>
-          <CardTitle className="text-2xl flex items-center gap-2">
-            <ImageIcon className="w-6 h-6" /> OpenAI Image Generator
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          {/* Prompt */}
-          <div className="space-y-2">
-            <Label htmlFor="prompt">Prompt</Label>
-            <Input
-              id="prompt"
-              placeholder="Describe your image..."
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
+    <div className="min-h-screen bg-black text-white p-8">
+      {/* Minimal header */}
+      <div className="text-center mb-16">
+        <h1 className="text-xl font-mono font-light tracking-wide">imageGen</h1>
+      </div>
+
+      <div className="max-w-xl mx-auto space-y-12">
+        {/* Prompt */}
+        <input
+          className="w-full bg-transparent border-b border-gray-700 pb-2 text-sm font-mono focus:border-white transition-colors"
+          placeholder="describe your image..."
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+        />
+
+        {/* File upload */}
+        <input 
+          type="file" 
+          accept="image/*" 
+          onChange={handleImageUpload}
+          className="w-full bg-transparent text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:border-0 file:text-xs file:bg-transparent file:text-gray-400 hover:file:text-white"
+        />
+
+        {/* Controls */}
+        <div className="grid grid-cols-3 gap-8 text-xs">
+          <div>
+            <div className="text-gray-500 mb-2">count</div>
+            <input
+              type="number"
+              min={1}
+              max={4}
+              value={n}
+              onChange={(e) => setN(Number(e.target.value))}
+              className="w-full bg-transparent border-b border-gray-700 pb-1 focus:border-white transition-colors"
             />
           </div>
-
-          {/* File upload */}
-          <div className="space-y-2">
-            <Label htmlFor="image">Input Image (optional)</Label>
-            <Input id="image" type="file" accept="image/*" onChange={handleImageUpload} />
+          <div>
+            <div className="text-gray-500 mb-2">size</div>
+            <select
+              value={size}
+              onChange={(e) => setSize(e.target.value)}
+              className="w-full bg-transparent border-b border-gray-700 pb-1 focus:border-white transition-colors"
+            >
+              <option value="1024x1024">square</option>
+              <option value="1536x1024">landscape</option>
+              <option value="1024x1536">portrait</option>
+            </select>
           </div>
-
-          {/* Quantity, Size & Quality */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="quantity">Quantity</Label>
-              <Input
-                id="quantity"
-                type="number"
-                min={1}
-                max={4}
-                value={n}
-                onChange={(e) => setN(Number(e.target.value))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="size">Size</Label>
-              <Select value={size} onValueChange={setSize}>
-                <SelectTrigger id="size">
-                  <SelectValue placeholder="Select size" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1024x1024">Square (1024²)</SelectItem>
-                  <SelectItem value="1536x1024">Landscape</SelectItem>
-                  <SelectItem value="1024x1536">Portrait</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="quality">Quality/Speed</Label>
-              <Select value={quality} onValueChange={setQuality}>
-                <SelectTrigger id="quality">
-                  <SelectValue placeholder="Select quality" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">⚡ Low (5-10s)</SelectItem>
-                  <SelectItem value="medium">🚀 Medium (8-15s)</SelectItem>
-                  <SelectItem value="high">🐌 High (25-40s)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div>
+            <div className="text-gray-500 mb-2">quality</div>
+            <select
+              value={quality}
+              onChange={(e) => setQuality(e.target.value)}
+              className="w-full bg-transparent border-b border-gray-700 pb-1 focus:border-white transition-colors"
+            >
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+            </select>
           </div>
+        </div>
 
-          {/* Streaming toggle */}
-          {!inputImage && (
-            <div className="flex items-center space-x-3">
-              <Switch
-                id="streaming"
-                checked={useStreaming}
-                onCheckedChange={setUseStreaming}
-              />
-              <Label htmlFor="streaming" className="text-sm">
-                ⚡ Progressive Loading (See images form in real-time)
-              </Label>
-            </div>
-          )}
+        {/* Streaming toggle */}
+        {!inputImage && (
+          <div className="flex items-center space-x-3 text-xs">
+            <input
+              type="checkbox"
+              id="streaming"
+              checked={useStreaming}
+              onChange={(e) => setUseStreaming(e.target.checked)}
+              className="w-3 h-3"
+            />
+            <label htmlFor="streaming" className="text-gray-500">
+              progressive loading
+            </label>
+          </div>
+        )}
 
-          {/* Generate button */}
-          <Button
-            className="w-full gap-2"
+        {/* Generate button */}
+        <div className="text-center">
+          <button
             onClick={handleGenerate}
             disabled={loading || streamingGeneration.isStreaming}
+            className="text-sm uppercase tracking-wider hover:text-gray-300 disabled:text-gray-600 transition-colors"
           >
-            {(loading || streamingGeneration.isStreaming) && <Loader2 className="h-4 w-4 animate-spin" />} 
-            Generate
-          </Button>
+            {(loading || streamingGeneration.isStreaming) && <Loader2 className="inline w-3 h-3 animate-spin mr-2" />}
+            {loading || streamingGeneration.isStreaming ? "generating..." : "generate"}
+          </button>
+        </div>
 
-          {/* Progress bar */}
-          {loading && <Progress value={progress} className="h-2" />}
-          
-          {/* Streaming error */}
-          {streamingGeneration.error && (
-            <div className="text-red-500 text-sm">
-              Error: {streamingGeneration.error}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        {/* Progress */}
+        {loading && (
+          <div className="w-full bg-gray-800 h-px">
+            <div 
+              className="bg-white h-px transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        )}
+        
+        {/* Error */}
+        {streamingGeneration.error && (
+          <div className="text-xs text-red-500 text-center">
+            {streamingGeneration.error}
+          </div>
+        )}
+      </div>
 
       {/* Results */}
       <AnimatePresence>
@@ -310,164 +294,147 @@ export default function ImageGeneratorPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.4 }}
-            className="grid grid-cols-1 gap-6 mt-10 sm:grid-cols-2 sm:mobile-stack"
+            className="max-w-4xl mx-auto mt-24 grid grid-cols-1 gap-16 sm:grid-cols-2"
           >
             {/* Traditional results */}
             {resultImages.map((src, idx) => (
-              <Card key={`traditional-${idx}`} className="overflow-hidden">
-                <CardContent className="p-0">
-                  <div 
-                    className="relative w-full cursor-pointer transition-all duration-300 group"
-                    style={{ 
-                      aspectRatio: expandedImage === idx ? '4/3' : '1/1',
-                      maxHeight: expandedImage === idx ? '600px' : '400px'
-                    }}
-                    onClick={() => setExpandedImage(expandedImage === idx ? null : idx)}
+              <div key={`traditional-${idx}`} className="space-y-4">
+                <div 
+                  className="relative w-full cursor-pointer transition-all duration-300"
+                  style={{ 
+                    aspectRatio: expandedImage === idx ? '4/3' : '1/1',
+                    maxHeight: expandedImage === idx ? '600px' : '400px'
+                  }}
+                  onClick={() => setExpandedImage(expandedImage === idx ? null : idx)}
+                >
+                  <ProgressiveImage
+                    src={src}
+                    alt={`Result ${idx + 1}`}
+                    className={`transition-all duration-300 ${
+                      expandedImage === idx ? 'object-contain' : 'object-cover'
+                    }`}
+                    fill
+                    priority
+                    unoptimized
+                  />
+                </div>
+                <div className="text-center space-y-2">
+                  <a
+                    href={src}
+                    download={`image_${idx + 1}.${outputFormat}`}
+                    className="text-xs uppercase tracking-wider hover:text-gray-300 transition-colors"
                   >
+                    download
+                  </a>
+                  <button
+                    onClick={() => handleOpenEdit(idx)}
+                    className="block mx-auto text-xs uppercase tracking-wider hover:text-gray-300 transition-colors"
+                  >
+                    edit
+                  </button>
+                </div>
+                {editedImages[idx] && (
+                  <div className="relative w-full aspect-square border border-gray-800">
                     <ProgressiveImage
-                      src={src}
-                      alt={`Result ${idx + 1}`}
-                      className={`transition-all duration-300 ${
-                        expandedImage === idx ? 'object-contain' : 'object-cover'
-                      }`}
+                      src={editedImages[idx]}
+                      alt={`Edited ${idx + 1}`}
+                      className="object-cover"
                       fill
                       priority
                       unoptimized
                     />
-                    
-                    {/* Hover overlay */}
-                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-300 flex items-center justify-center">
-                      <span className="text-white text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                        {expandedImage === idx ? 'Collapse' : 'Expand'}
-                      </span>
-                    </div>
                   </div>
-                  <a
-                    href={src}
-                    download={`image_${idx + 1}.${outputFormat}`}
-                    className="block text-center py-2 hover:underline"
-                  >
-                    Download Image {idx + 1}
-                  </a>
-                  {/* Edit Button */}
-                  <Button
-                    className="w-full mt-2"
-                    variant="outline"
-                    onClick={() => handleOpenEdit(idx)}
-                  >
-                    Edit Image
-                  </Button>
-                  {/* Edited Images */}
-                  {editedImages[idx] && (
-                    <div className="mt-4">
-                      <Label>Edited Image:</Label>
-                      <div className="relative w-full aspect-square border border-dashed border-gray-400 mt-2">
-                        <ProgressiveImage
-                          src={editedImages[idx]}
-                          alt={`Edited Result ${idx + 1}`}
-                          className="object-cover"
-                          fill
-                          priority
-                          unoptimized
-                        />
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                )}
+              </div>
             ))}
 
             {/* Streaming results */}
             {Object.entries(streamingGeneration.images).map(([imageIndex, src]) => (
-              <Card key={`streaming-${imageIndex}`} className="overflow-hidden">
-                <CardContent className="p-0">
-                  <div 
-                    className="relative w-full cursor-pointer transition-all duration-300 group"
-                    style={{ 
-                      aspectRatio: expandedImage === parseInt(imageIndex) ? '4/3' : '1/1',
-                      maxHeight: expandedImage === parseInt(imageIndex) ? '600px' : '400px'
-                    }}
-                    onClick={() => {
-                      const idx = parseInt(imageIndex);
-                      setExpandedImage(expandedImage === idx ? null : idx);
-                    }}
-                  >
-                    <ProgressiveImage
-                      src={src}
-                      alt={`Streaming Result ${parseInt(imageIndex) + 1}`}
-                      className={`transition-all duration-300 ${
-                        expandedImage === parseInt(imageIndex) ? 'object-contain' : 'object-cover'
-                      }`}
-                      fill
-                      priority
-                      unoptimized
-                      showLoadingSpinner={streamingGeneration.isStreaming}
-                    />
-                    
-                    {/* Streaming indicator and progress */}
-                    {streamingGeneration.isStreaming && (
-                      <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded-full">
-                        {streamingGeneration.progress[parseInt(imageIndex)] 
-                          ? `${Math.round(streamingGeneration.progress[parseInt(imageIndex)])}%`
-                          : 'Streaming...'}
-                      </div>
-                    )}
-                    
-                    {/* Hover overlay */}
-                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-300 flex items-center justify-center">
-                      <span className="text-white text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                        {expandedImage === parseInt(imageIndex) ? 'Collapse' : 'Expand'}
-                      </span>
+              <div key={`streaming-${imageIndex}`} className="space-y-4">
+                <div 
+                  className="relative w-full cursor-pointer transition-all duration-300"
+                  style={{ 
+                    aspectRatio: expandedImage === parseInt(imageIndex) ? '4/3' : '1/1',
+                    maxHeight: expandedImage === parseInt(imageIndex) ? '600px' : '400px'
+                  }}
+                  onClick={() => {
+                    const idx = parseInt(imageIndex);
+                    setExpandedImage(expandedImage === idx ? null : idx);
+                  }}
+                >
+                  <ProgressiveImage
+                    src={src}
+                    alt={`Streaming ${parseInt(imageIndex) + 1}`}
+                    className={`transition-all duration-300 ${
+                      expandedImage === parseInt(imageIndex) ? 'object-contain' : 'object-cover'
+                    }`}
+                    fill
+                    priority
+                    unoptimized
+                    showLoadingSpinner={streamingGeneration.isStreaming}
+                  />
+                  
+                  {streamingGeneration.isStreaming && (
+                    <div className="absolute top-2 right-2 bg-white text-black text-xs px-2 py-1">
+                      {streamingGeneration.progress[parseInt(imageIndex)] 
+                        ? `${Math.round(streamingGeneration.progress[parseInt(imageIndex)])}%`
+                        : '...'}
                     </div>
-                  </div>
+                  )}
+                </div>
+                <div className="text-center">
                   <a
                     href={src}
-                    download={`streaming_image_${parseInt(imageIndex) + 1}.${outputFormat}`}
-                    className="block text-center py-2 hover:underline"
+                    download={`streaming_${parseInt(imageIndex) + 1}.${outputFormat}`}
+                    className="text-xs uppercase tracking-wider hover:text-gray-300 transition-colors"
                   >
-                    Download Image {parseInt(imageIndex) + 1}
+                    download
                   </a>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             ))}
           </motion.div>
         )}
       </AnimatePresence>
 
-
       {/* Edit Modal */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <div className="fixed inset-0 bg-black bg-opacity-30 z-40 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold mb-4">Edit Image</h2>
-            <div className="mb-2">
-              <Label htmlFor="editPrompt">Edit Prompt</Label>
-              <Textarea
-                id="editPrompt"
-                value={editPrompt}
-                onChange={(e) => setEditPrompt(e.target.value)}
-                placeholder="Describe your edit..."
-                className="mt-1"
-              />
-            </div>
-            <div className="mb-4">
-              <Label htmlFor="editMask">Mask (optional)</Label>
-              <Input
-                id="editMask"
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditMask(e.target.files?.[0] || null)}
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={() => setEditOpen(false)} variant="secondary" disabled={editing}>Cancel</Button>
-              <Button onClick={handleEdit} disabled={editing || !editPrompt}>
-                {editing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Apply Edit"}
-              </Button>
+      {editOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 z-40 flex items-center justify-center p-8">
+          <div className="bg-black border border-gray-800 p-8 w-full max-w-md space-y-6">
+            <div className="text-xs uppercase tracking-wider text-gray-500">edit image</div>
+            <textarea
+              value={editPrompt}
+              onChange={(e) => setEditPrompt(e.target.value)}
+              placeholder="describe your edit..."
+              className="w-full bg-transparent border-b border-gray-700 pb-2 text-sm font-mono focus:border-white transition-colors resize-none"
+              rows={3}
+            />
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditMask(e.target.files?.[0] || null)}
+              className="w-full bg-transparent text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:border-0 file:text-xs file:bg-transparent file:text-gray-400 hover:file:text-white"
+            />
+            <div className="flex justify-center space-x-8 text-xs uppercase tracking-wider">
+              <button 
+                onClick={() => setEditOpen(false)} 
+                disabled={editing}
+                className="hover:text-gray-300 disabled:text-gray-600 transition-colors"
+              >
+                cancel
+              </button>
+              <button 
+                onClick={handleEdit} 
+                disabled={editing || !editPrompt}
+                className="hover:text-gray-300 disabled:text-gray-600 transition-colors"
+              >
+                {editing && <Loader2 className="inline w-3 h-3 animate-spin mr-2" />}
+                {editing ? "applying..." : "apply"}
+              </button>
             </div>
           </div>
         </div>
-      </Dialog>
+      )}
     </div>
   );
 }

@@ -7,30 +7,29 @@ interface StreamingOptions {
   n?: number;
   size?: string;
   quality?: string;
-  style?: string;
+  partial_images?: number;
 }
 
 interface StreamingState {
   isStreaming: boolean;
-  images: { [key: number]: string };
-  progress: { [key: number]: number };
+  partialImages: { [key: number]: string };
+  finalImages: { [key: number]: string };
   error: string | null;
-  usage?: any;
 }
 
 export function useStreamingImageGeneration() {
   const [state, setState] = useState<StreamingState>({
     isStreaming: false,
-    images: {},
-    progress: {},
+    partialImages: {},
+    finalImages: {},
     error: null
   });
 
   const generateImages = useCallback(async (options: StreamingOptions) => {
     setState({
       isStreaming: true,
-      images: {},
-      progress: {},
+      partialImages: {},
+      finalImages: {},
       error: null
     });
 
@@ -40,7 +39,12 @@ export function useStreamingImageGeneration() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(options),
+        body: JSON.stringify({
+          prompt: options.prompt,
+          size: options.size || '1024x1024',
+          quality: options.quality || 'medium',
+          partial_images: options.partial_images || 2,
+        }),
       });
 
       if (!response.ok) {
@@ -70,7 +74,6 @@ export function useStreamingImageGeneration() {
           if (line.startsWith('data: ')) {
             const dataStr = line.slice(6).trim();
             
-            // Check for done signal
             if (dataStr === '[DONE]') {
               setState(prevState => ({
                 ...prevState,
@@ -79,52 +82,43 @@ export function useStreamingImageGeneration() {
               return;
             }
 
+            if (dataStr === '') continue; // Skip empty data lines
+
             try {
-              const chunk = JSON.parse(dataStr);
+              const data = JSON.parse(dataStr);
               
-              // Handle OpenAI streaming format
-              if (chunk.data && Array.isArray(chunk.data)) {
-                setState(prevState => {
-                  const newState = { ...prevState };
-
-                  chunk.data.forEach((item: any) => {
-                    if (item.object === 'image.chunk') {
-                      const index = item.index || 0;
-                      
-                      // Update progress
-                      if (item.progress !== undefined) {
-                        newState.progress[index] = item.progress;
-                      }
-                      
-                      // Update image if b64_json is present
-                      if (item.b64_json) {
-                        newState.images[index] = `data:image/png;base64,${item.b64_json}`;
-                      }
-                    }
-                  });
-
-                  return newState;
-                });
-              }
-
-              // Handle usage info
-              if (chunk.usage) {
+              if (data.type === 'partial_image' && data.data) {
+                const imageUrl = `data:image/png;base64,${data.data}`;
                 setState(prevState => ({
                   ...prevState,
-                  usage: chunk.usage
+                  partialImages: {
+                    ...prevState.partialImages,
+                    [data.index || 0]: imageUrl
+                  }
                 }));
-              }
-
-              // Handle errors
-              if (chunk.error) {
+              } else if (data.type === 'final_image' && data.data) {
+                const imageUrl = `data:image/png;base64,${data.data}`;
                 setState(prevState => ({
                   ...prevState,
-                  isStreaming: false,
-                  error: chunk.error
+                  finalImages: {
+                    ...prevState.finalImages,
+                    [data.index || 0]: imageUrl
+                  }
                 }));
+              } else if (data.type === 'done') {
+                setState(prevState => ({
+                  ...prevState,
+                  isStreaming: false
+                }));
+                return;
+              } else if (data.type === 'error') {
+                throw new Error(data.error || 'Unknown streaming error');
               }
             } catch (parseError) {
-              console.error('Error parsing streaming data:', parseError);
+              // Only log parsing errors if it's not likely a partial JSON chunk
+              if (!dataStr.includes('"data":') || dataStr.includes('}')) {
+                console.warn('Failed to parse streaming data:', parseError);
+              }
             }
           }
         }
@@ -141,8 +135,8 @@ export function useStreamingImageGeneration() {
   const reset = useCallback(() => {
     setState({
       isStreaming: false,
-      images: {},
-      progress: {},
+      partialImages: {},
+      finalImages: {},
       error: null
     });
   }, []);

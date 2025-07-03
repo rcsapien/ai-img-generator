@@ -3,6 +3,8 @@ import React, { useState } from "react";
 import Image from "next/image";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
+import { useStreamingImageGeneration } from "@/hooks/useStreamingImageGeneration";
+import { StreamingImage } from "@/components/ui/progressive-image";
 
 interface Scene {
   scene_name: string;
@@ -95,6 +97,9 @@ export default function StoryboardPage() {
   const [transformedMasterPrompt, setTransformedMasterPrompt] = useState("");
   const [youtubeVideo, setYoutubeVideo] = useState<YouTubeVideo | null>(null);
   const [expandedScene, setExpandedScene] = useState<number | null>(null);
+  const [useStreaming, setUseStreaming] = useState(true);
+  
+  const { generateImages, isStreaming, partialImages, finalImages, error: streamingError } = useStreamingImageGeneration();
 
 
   const generateImage = async (prompt: string) => {
@@ -107,10 +112,7 @@ export default function StoryboardPage() {
         prompt,
         n: 1,
         size: "1024x1024",
-        background: "auto",
-        outputFormat: "png",
-        quality: "medium", // Changed from "high" to "medium" for speed
-        moderation: "auto",
+        quality: "standard", // Faster than high
       }),
     });
     

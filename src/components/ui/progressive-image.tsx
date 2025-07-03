@@ -47,7 +47,7 @@ export function ProgressiveImage({
     
     // Test if image can be loaded
     if (src && src.startsWith('data:image')) {
-      const testImg = new Image();
+      const testImg = new window.Image();
       testImg.onload = () => console.log('[ProgressiveImage] TEST: Base64 image is valid');
       testImg.onerror = (e) => console.error('[ProgressiveImage] TEST: Base64 image is INVALID', e);
       testImg.src = src;
@@ -133,13 +133,15 @@ export function ProgressiveImage({
 }
 
 interface StreamingImageProps extends Omit<ProgressiveImageProps, 'src'> {
-  streamingUpdates?: boolean;
-  partialImageQuality?: number; // 0-1, how much to show of partial images
+  partialSrc?: string;
+  finalSrc?: string;
+  showProgressBar?: boolean;
 }
 
 export function StreamingImage({
-  streamingUpdates = false,
-  partialImageQuality = 0.7,
+  partialSrc,
+  finalSrc,
+  showProgressBar = true,
   alt,
   className,
   fill = false,
@@ -151,41 +153,36 @@ export function StreamingImage({
   onError,
   ...props
 }: StreamingImageProps) {
-  const [currentSrc, setCurrentSrc] = useState<string>('');
   const [isPartial, setIsPartial] = useState(false);
-  const [loadingProgress, setLoadingProgress] = useState(0);
+  const currentSrc = finalSrc || partialSrc || '';
+  const hasPartialImage = !!partialSrc && !finalSrc;
 
-  const updatePartialImage = (imageData: string, progress: number = 0) => {
-    setCurrentSrc(imageData);
-    setIsPartial(progress < 1);
-    setLoadingProgress(progress);
-  };
-
-  const setFinalImage = (imageData: string) => {
-    setCurrentSrc(imageData);
-    setIsPartial(false);
-    setLoadingProgress(1);
-  };
+  useEffect(() => {
+    setIsPartial(hasPartialImage);
+  }, [hasPartialImage]);
 
   return (
     <div className={cn("relative overflow-hidden rounded", className)} style={style} onClick={onClick}>
       {/* Progress indicator for streaming */}
-      {streamingUpdates && isPartial && (
+      {showProgressBar && isPartial && (
         <div className="absolute top-2 left-2 right-2 z-10">
           <div className="bg-black bg-opacity-50 rounded-full p-1">
             <div className="w-full bg-gray-600 rounded-full h-1">
               <div 
-                className="bg-blue-500 h-1 rounded-full transition-all duration-300"
-                style={{ width: `${loadingProgress * 100}%` }}
+                className="bg-blue-500 h-1 rounded-full animate-pulse"
+                style={{ width: '60%' }}
               />
             </div>
           </div>
         </div>
       )}
 
-      {/* Partial image overlay effect */}
+      {/* Partial image blur overlay effect */}
       {isPartial && (
-        <div className="absolute inset-0 bg-gradient-to-t from-transparent via-transparent to-white/10 pointer-events-none z-10" />
+        <div className="absolute inset-0 pointer-events-none z-10">
+          <div className="absolute inset-0 bg-gradient-to-t from-transparent via-transparent to-blue-500/5" />
+          <div className="absolute inset-0 backdrop-blur-[0.5px]" />
+        </div>
       )}
 
       <ProgressiveImage
@@ -195,7 +192,9 @@ export function StreamingImage({
         width={width}
         height={height}
         className={cn(
-          isPartial && "brightness-90 contrast-110", // Slight adjustment for partial images
+          "transition-all duration-700 ease-out",
+          isPartial && "brightness-95 contrast-105 saturate-110", // Enhance partial images
+          finalSrc && "brightness-100 contrast-100 saturate-100", // Normal final images
           fill ? "object-contain" : ""
         )}
         showLoadingSpinner={!currentSrc}
