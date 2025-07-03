@@ -1,18 +1,6 @@
 "use client";
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import Image from "next/image";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from "@/components/ui/card";
-import Slideshow from "@/components/Slideshow";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 
@@ -24,7 +12,6 @@ interface Scene {
   lyric_excerpt?: string;
 }
 
-const PRESET_MASTER = `Music-video still for Kendrick Lamar’s 30-second visual inspired by “GOD.” Render as high-end, full-color claymation: hand-sculpted figures with visible fingerprints, imperfect seams, and matte clay finishes. Emphasize analog craft — soft film grain, 24 fps motion blur, and naturalistic imperfections. Visual palette blends warm gospel golds, sun-washed pastels, dusky violets, streetlight ambers, and shadowy urban grays. Capture a wide range of intimate and surreal settings: Compton living rooms, candlelit churches, deserts under eclipse, rooftop fireworks, childhood flashbacks, dreamlike buses, barbershops, and mountain overlooks. Each scene should feel emotionally charged and tactile. Miniature sets should resemble handcrafted dioramas — not overly digital. Use dynamic stop-motion camera work (crane shots, push-ins, dolly sweeps, rotating overheads, first-person POVs). Lighting should add depth: volumetric haze, practical reflections, and color cast from stained glass, neon, or firelight. Frame is ultra-detailed and photorealistic in a handcrafted stop-motion style. Format: 4K square (1024×1024 or larger). No text, no watermark.`;
 
 const PRESET_STORYLINE = `0–2s – “This what God feel like, yeah”
 
@@ -89,6 +76,14 @@ Kendrick skateboards alone through an abandoned mall, grinning. His wheels clack
 Kendrick sits barefoot on a wooden porch. A little girl offers him a grape popsicle. He accepts it. They look at the sunset together, silent.
 TO BE CONTINUED… appears handwritten in the sky like vapor.`;
 
+interface YouTubeVideo {
+  videoId: string;
+  title: string;
+  channelTitle: string;
+  description: string;
+  thumbnails: unknown;
+}
+
 export default function StoryboardPage() {
   const [masterPrompt, setMasterPrompt] = useState("");
   const [songName, setSongName] = useState("");
@@ -97,28 +92,65 @@ export default function StoryboardPage() {
   const [loading, setLoading] = useState(false);
   const [loadingStoryline, setLoadingStoryline] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [slideshowOpen, setSlideshowOpen] = useState(false);
-  const [slideshowIndex, setSlideshowIndex] = useState(0);
+  const [transformedMasterPrompt, setTransformedMasterPrompt] = useState("");
+  const [youtubeVideo, setYoutubeVideo] = useState<YouTubeVideo | null>(null);
+  const [expandedScene, setExpandedScene] = useState<number | null>(null);
+
 
   const generateImage = async (prompt: string) => {
+    console.log('[generateImage] Starting generation for prompt:', prompt.substring(0, 100) + '...');
+    
     const res = await fetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         prompt,
         n: 1,
-        size: "512x512",
+        size: "1024x1024",
         background: "auto",
         outputFormat: "png",
-        quality: "auto",
+        quality: "medium", // Changed from "high" to "medium" for speed
         moderation: "auto",
       }),
     });
+    
+    console.log('[generateImage] API response status:', res.status);
     const data = await res.json();
+    console.log('[generateImage] API response data:', data);
+    
+    if (data?.data?.[0]?.url) {
+      console.log('[generateImage] Returning URL:', data.data[0].url);
+      return data.data[0].url;
+    }
     if (data?.data?.[0]?.b64_json) {
-      return `data:image/png;base64,${data.data[0].b64_json}`;
+      const dataUrl = `data:image/png;base64,${data.data[0].b64_json}`;
+      console.log('[generateImage] Returning base64 URL, length:', dataUrl.length);
+      return dataUrl;
     }
     throw new Error(data.error || "Failed to generate image");
+  };
+
+  const transformMasterPrompt = async (rawPrompt: string) => {
+    try {
+      const res = await fetch("/api/transform-master-prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          masterPrompt: rawPrompt, 
+          songName
+        }),
+      });
+      
+      if (!res.ok) {
+        throw new Error("Failed to transform master prompt");
+      }
+      
+      const data = await res.json();
+      return data.transformedPrompt;
+    } catch (error) {
+      console.error("Error transforming master prompt:", error);
+      return rawPrompt; // Fallback to original prompt
+    }
   };
 
   const handleGenerate = async () => {
@@ -129,6 +161,15 @@ export default function StoryboardPage() {
     setLoading(true);
     setProgress(0);
     try {
+      // Transform the master prompt first
+      console.log('=== PROMPT TRANSFORMATION ===');
+      console.log('Original master prompt:', masterPrompt);
+      console.log('Master prompt length:', masterPrompt.length);
+      const transformed = await transformMasterPrompt(masterPrompt);
+      console.log('Transformed master prompt:', transformed);
+      console.log('=== END TRANSFORMATION ===');
+      setTransformedMasterPrompt(transformed);
+
       const sbRes = await fetch("/api/storyboard", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -140,17 +181,53 @@ export default function StoryboardPage() {
         setLoading(false);
         return;
       }
-      for (let i = 0; i < Math.min(storyboard.length, 10); i++) {
-        const scene = storyboard[i];
+      // Initialize scenes array with all storyboard items (without images)
+      const initialScenes = storyboard.slice(0, 5); // Match processing limit
+      console.log('[handleGenerate] Initial scenes:', initialScenes);
+      setScenes(initialScenes);
+      
+      // Generate images sequentially to avoid overwhelming the API
+      const scenesToProcess = storyboard.slice(0, 5); // Reduced from 10 to 5 for efficiency
+      console.log('[handleGenerate] Storyboard data:', storyboard);
+      console.log('[handleGenerate] Scenes to process:', scenesToProcess);
+      console.log('[handleGenerate] Starting sequential generation for', scenesToProcess.length, 'scenes');
+      
+      console.log('[handleGenerate] About to start for loop...');
+      for (let i = 0; i < scenesToProcess.length; i++) {
+        const scene = scenesToProcess[i];
+        console.log(`[handleGenerate] Processing scene ${i + 1}/${scenesToProcess.length}`);
+        console.log(`[handleGenerate] Scene ${i + 1} data:`, scene);
+        setProgress(Math.round((i / scenesToProcess.length) * 100));
+        
         try {
-          const combinedPrompt = `${masterPrompt}. ${scene.scene_description}`;
-          scene.image = await generateImage(combinedPrompt);
+          const combinedPrompt = `SCENE: ${scene.scene_description}
+
+VISUAL DIRECTION: ${transformed}`;
+          console.log(`Scene ${i + 1} combined prompt:`, combinedPrompt);
+          
+          console.log(`[handleGenerate] Calling generateImage for scene ${i + 1}...`);
+          const imageUrl = await generateImage(combinedPrompt);
+          console.log(`[handleGenerate] Scene ${i + 1} generation completed, updating state...`);
+          
+          // Update scene immediately when generated
+          setScenes(prevScenes => {
+            const updatedScenes = [...prevScenes];
+            if (updatedScenes[i]) {
+              updatedScenes[i] = { 
+                ...updatedScenes[i], 
+                image: imageUrl 
+              };
+            }
+            console.log(`[handleGenerate] Scene ${i + 1} state updated`);
+            return updatedScenes;
+          });
+          
         } catch (err) {
-          console.error("Image generation error", err);
+          console.error(`[handleGenerate] Image generation error for scene ${i + 1}:`, err);
         }
-        setScenes([...storyboard.slice(0, 10)]);
-        setProgress(Math.round(((i + 1) / Math.min(storyboard.length, 10)) * 100));
       }
+      
+      setProgress(100);
     } catch (err) {
       console.error(err);
       alert("Unexpected error generating storyboard.");
@@ -181,8 +258,13 @@ export default function StoryboardPage() {
     const scene = scenes[idx];
     if (!scene?.scene_description) return;
     setLoading(true);
-    try {
-      const combinedPrompt = `${masterPrompt}. ${scene.scene_description}`;
+    try {      
+      // Use the already transformed master prompt if available, otherwise transform it
+      const promptToUse = transformedMasterPrompt || await transformMasterPrompt(masterPrompt);
+      const combinedPrompt = `SCENE: ${scene.scene_description}
+
+VISUAL DIRECTION: ${promptToUse}`;
+      console.log(`Regenerating scene ${idx + 1} with prompt:`, combinedPrompt);
       const newImg = await generateImage(combinedPrompt);
       setScenes((prev) => {
         const updated = [...prev];
@@ -198,7 +280,7 @@ export default function StoryboardPage() {
   };
 
   const loadPreset = () => {
-    setMasterPrompt(PRESET_MASTER);
+    setMasterPrompt("claymation");
     setStoryline(PRESET_STORYLINE);
     setSongName("");
   };
@@ -225,6 +307,7 @@ export default function StoryboardPage() {
       const data = await res.json();
       if (data.storyline) {
         setStoryline(data.storyline);
+        setYoutubeVideo(data.youtubeVideo);
       } else {
         throw new Error("No storyline returned");
       }
@@ -249,160 +332,239 @@ export default function StoryboardPage() {
     saveAs(blob, "storyboard_images.zip");
   };
 
-  // Open slideshow with the selected image
-  const openSlideshow = (index: number) => {
-    setSlideshowIndex(index);
-    setSlideshowOpen(true);
+  // Toggle expanded view for a scene
+  const toggleExpanded = (index: number) => {
+    setExpandedScene(expandedScene === index ? null : index);
   };
 
-  // Get all valid images for the slideshow
-  const slideshowImages = useMemo(() => {
-    return scenes
-      .filter(scene => scene.image)
-      .map(scene => scene.image as string);
-  }, [scenes]);
+  // Navigate between scenes in expanded view
+  const navigateScene = (direction: 'prev' | 'next') => {
+    if (expandedScene === null) return;
+    const scenesWithImages = scenes.map((scene, index) => ({ scene, index })).filter(item => item.scene.image);
+    const currentIndex = scenesWithImages.findIndex(item => item.index === expandedScene);
+    if (currentIndex === -1) return;
+    
+    let newIndex;
+    if (direction === 'prev') {
+      newIndex = currentIndex > 0 ? currentIndex - 1 : scenesWithImages.length - 1;
+    } else {
+      newIndex = currentIndex < scenesWithImages.length - 1 ? currentIndex + 1 : 0;
+    }
+    setExpandedScene(scenesWithImages[newIndex].index);
+  };
 
   return (
-    <div className="container mx-auto p-6 max-w-4xl space-y-6">
-      <Card className="p-6 space-y-4 shadow-xl">
-        <CardHeader>
-          <CardTitle className="text-2xl">frameLang</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="master">Master Prompt</Label>
-            <Input
-              id="master"
-              placeholder="Overall style, mood, vibe..."
+    <div className="min-h-screen bg-black text-white p-8">
+      <div className="max-w-2xl mx-auto space-y-16">
+        
+        {/* Title */}
+        <div className="text-center">
+          <h1 className="text-xl font-mono font-light tracking-wide">frameLang</h1>
+        </div>
+
+        {/* Form Section */}
+        <div className="space-y-12">
+          
+          {/* Master Prompt */}
+          <div className="space-y-3">
+            <label className="block text-xs uppercase tracking-wider text-gray-500">
+              Visual Style
+            </label>
+            <input
+              className="w-full bg-transparent border-b border-gray-700 pb-2 text-sm font-mono focus:border-white transition-colors"
+              placeholder="cyberpunk, dreamy watercolor, gritty realistic, claymation..."
               value={masterPrompt}
               onChange={(e) => setMasterPrompt(e.target.value)}
             />
+            <p className="text-xs text-gray-600">
+              Enter simple style keywords (e.g., &quot;cyberpunk&quot;, &quot;dreamy&quot;, &quot;claymation&quot;) - will be expanded into detailed visual direction
+            </p>
           </div>
           
-          <div className="space-y-2">
-            <Label htmlFor="songName">Song name</Label>
-            <div className="flex space-x-2">
-              <Input
-                id="songName"
+          {/* Song Name */}
+          <div className="space-y-3">
+            <label className="block text-xs uppercase tracking-wider text-gray-500">
+              Song Name
+            </label>
+            <div className="space-y-4">
+              <input
+                className="w-full bg-transparent border-b border-gray-700 pb-2 text-sm font-mono focus:border-white transition-colors"
                 placeholder="Enter a song name..."
                 value={songName}
                 onChange={(e) => setSongName(e.target.value)}
               />
-              <Button 
-                variant="outline" 
+              <button 
                 onClick={generateStorylineFromSong}
                 disabled={loadingStoryline || !songName}
+                className="text-xs uppercase tracking-wider hover:text-gray-300 disabled:text-gray-600 transition-colors"
               >
-                {loadingStoryline ? "Generating..." : "Generate Storyline"}
-              </Button>
+                {loadingStoryline ? "generating..." : "generate storyline"}
+              </button>
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="storyline">Storyline</Label>
-            <Textarea
-              id="storyline"
+          {/* YouTube Video Info */}
+          {youtubeVideo && (
+            <div className="space-y-3 border-t border-gray-800 pt-8">
+              <label className="block text-xs uppercase tracking-wider text-gray-500">
+                Found YouTube Video
+              </label>
+              <div className="bg-gray-900 p-4 space-y-2">
+                <div className="text-sm font-mono">{youtubeVideo.title}</div>
+                <div className="text-xs text-gray-400">by {youtubeVideo.channelTitle}</div>
+                <div className="text-xs text-gray-500 leading-relaxed">
+                  {youtubeVideo.description.substring(0, 200)}...
+                </div>
+                <div className="flex space-x-4">
+                  <button 
+                    onClick={() => window.open(`https://www.youtube.com/watch?v=${youtubeVideo.videoId}`, '_blank')}
+                    className="text-xs uppercase tracking-wider hover:text-gray-300 transition-colors"
+                  >
+                    view on youtube
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Storyline */}
+          <div className="space-y-3">
+            <label className="block text-xs uppercase tracking-wider text-gray-500">
+              Storyline
+            </label>
+            <textarea
+              className="w-full bg-transparent border-b border-gray-700 pb-2 text-sm font-mono focus:border-white transition-colors resize-none"
+              rows={6}
               placeholder="Describe the narrative direction..."
               value={storyline}
               onChange={(e) => setStoryline(e.target.value)}
             />
           </div>
-          <Button variant="secondary" onClick={loadPreset}>
-            Load Kendrick Claymation Preset
-          </Button>
-          <Button onClick={handleGenerate} disabled={loading}>
-            {loading ? "Generating..." : "Generate"}
-          </Button>
-          <Button onClick={handleDownloadAll} disabled={!scenes.some((s) => s.image)}>
-            Download All Images
-          </Button>
-          {loading && <Progress value={progress} />}
-        </CardContent>
-      </Card>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        {scenes.map((scene, idx) => (
-          <Card key={idx} className="overflow-hidden">
-            <CardHeader>
-              <CardTitle className="font-bold">
-                {scene.scene_name} – {scene.time_stamp}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p>{scene.scene_description}</p>
-              {scene && (scene as Scene & { lyric_excerpt?: string }).lyric_excerpt && (
-                <p className="italic text-sm text-purple-700">&ldquo;{(scene as Scene & { lyric_excerpt?: string }).lyric_excerpt}&rdquo;</p>
-              )}
-              {scene.image ? (
-                <div className="relative w-full h-64 group">
-                  <Image
-                    src={scene.image}
-                    alt={scene.scene_name}
-                    className="rounded cursor-pointer"
-                    fill
-                    unoptimized
-                    style={{ objectFit: 'contain' }}
-                    onClick={() => openSlideshow(scenes.findIndex(s => s.image === scene.image))}
-                  />
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button 
-                      variant="secondary" 
-                      onClick={() => openSlideshow(scenes.findIndex(s => s.image === scene.image))}
-                      className="bg-black/50 text-white hover:bg-black/70"
-                    >
-                      View Fullscreen
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="w-full h-64 bg-gray-100 flex items-center justify-center text-sm text-gray-500">
-                  {loading ? "Generating image..." : "No image"}
-                </div>
-              )}
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleEditScene(idx)}
-                  disabled={loading}
-                >
-                  Edit
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleRegenerateScene(idx)}
-                  disabled={loading}
-                >
-                  Regenerate
-                </Button>
+          {/* Actions */}
+          <div className="space-y-4 text-center">
+            <button 
+              onClick={loadPreset}
+              className="block mx-auto text-xs uppercase tracking-wider hover:text-gray-300 transition-colors"
+            >
+              load preset
+            </button>
+            
+            <button 
+              onClick={handleGenerate} 
+              disabled={loading}
+              className="block mx-auto text-sm uppercase tracking-wider hover:text-gray-300 disabled:text-gray-600 transition-colors"
+            >
+              {loading ? "generating..." : "generate"}
+            </button>
+            
+            {scenes.some((s) => s.image) && (
+              <button 
+                onClick={handleDownloadAll}
+                className="block mx-auto text-xs uppercase tracking-wider hover:text-gray-300 transition-colors"
+              >
+                download all
+              </button>
+            )}
+          </div>
+
+          {/* Show transformed prompt if available */}
+          {transformedMasterPrompt && (
+            <div className="space-y-3 border-t border-gray-800 pt-8">
+              <label className="block text-xs uppercase tracking-wider text-gray-500">
+                Visual Style Guide
+              </label>
+              <div className="bg-gray-900 p-4 text-xs text-gray-400 leading-relaxed">
+                {transformedMasterPrompt}
               </div>
-            </CardContent>
-          </Card>
-        ))}
+            </div>
+          )}
+
+          {/* Progress */}
+          {loading && (
+            <div className="space-y-2">
+              <div className="w-full bg-gray-800 h-px">
+                <div 
+                  className="bg-white h-px transition-all duration-300"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <div className="text-center text-xs text-gray-500">
+                {progress}%
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Start Slideshow Button */}
-      {scenes.some(s => s.image) && (
-        <div className="flex justify-center mt-6">
-          <Button 
-            onClick={() => openSlideshow(0)}
-            size="lg"
-            className="px-8 py-6 text-lg"
-          >
-            Start Slideshow
-          </Button>
+      {/* Scenes Grid */}
+      {scenes.length > 0 && (
+        <div className="max-w-4xl mx-auto mt-24 space-y-16">
+          {scenes.map((scene, idx) => (
+            <div key={idx} className="space-y-6">
+              
+              {/* Scene Header */}
+              <div className="text-center space-y-2">
+                <h3 className="text-xs uppercase tracking-wider text-gray-500">
+                  {scene.time_stamp}
+                </h3>
+                <h2 className="text-sm font-mono font-light">
+                  {scene.scene_name}
+                </h2>
+              </div>
+
+              {/* Scene Description */}
+              <p className="text-center text-sm text-gray-300 leading-relaxed max-w-2xl mx-auto">
+                {scene.scene_description}
+              </p>
+
+              {/* Lyric Excerpt */}
+              {scene && (scene as Scene & { lyric_excerpt?: string }).lyric_excerpt && (
+                <p className="text-center text-xs text-gray-500 italic">
+                  &quot;{(scene as Scene & { lyric_excerpt?: string }).lyric_excerpt}&quot;
+                </p>
+              )}
+
+              {/* Image */}
+              {scene.image ? (
+                <div className="w-full max-w-lg mx-auto">
+                  <img
+                    src={scene.image}
+                    alt={scene.scene_name}
+                    className="w-full h-auto rounded"
+                  />
+                </div>
+              ) : (
+                <div className="w-full max-w-lg mx-auto h-64 border border-gray-800 flex items-center justify-center">
+                  <span className="text-xs uppercase tracking-wider text-gray-600">
+                    {loading ? "generating..." : "no image"}
+                  </span>
+                </div>
+              )}
+
+              {/* Scene Actions */}
+              <div className="flex justify-center space-x-8 text-xs uppercase tracking-wider">
+                <button
+                  onClick={() => handleEditScene(idx)}
+                  disabled={loading}
+                  className="hover:text-gray-300 disabled:text-gray-600 transition-colors"
+                >
+                  edit
+                </button>
+                <button
+                  onClick={() => handleRegenerateScene(idx)}
+                  disabled={loading}
+                  className="hover:text-gray-300 disabled:text-gray-600 transition-colors"
+                >
+                  regenerate
+                </button>
+              </div>
+            </div>
+          ))}
+
         </div>
       )}
 
-      {/* Slideshow component */}
-      {slideshowOpen && slideshowImages.length > 0 && (
-        <Slideshow
-          images={slideshowImages}
-          isOpen={slideshowOpen}
-          onClose={() => setSlideshowOpen(false)}
-        />
-      )}
     </div>
   );
 }

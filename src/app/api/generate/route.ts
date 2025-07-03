@@ -4,6 +4,9 @@ import OpenAI from 'openai';
 // Initialize once per module so the client can be reused across requests
 const openai = new OpenAI();
 
+// Note: Edge runtime removed - may cause issues with OpenAI SDK
+// Consider adding back after testing: export const runtime = 'edge';
+
 export async function POST(req: NextRequest) {
   console.log('==== /api/generate HIT ====');
   try {
@@ -40,7 +43,7 @@ export async function POST(req: NextRequest) {
         prompt,
         n: n ?? 1,
         size: finalSize,
-        quality: quality ?? 'high',
+        quality: quality === 'high' ? 'high' : (quality === 'low' ? 'low' : 'medium'), // Default to 'medium' for speed
         // Optional parameters
         ...(style && { style }),
         ...(background && { background }),
@@ -62,7 +65,7 @@ export async function POST(req: NextRequest) {
             prompt,
             n: n ?? 1,
             size: finalSize,
-            quality: quality ?? 'high',
+            quality: quality === 'high' ? 'high' : (quality === 'low' ? 'low' : 'medium'), // Default to 'medium' for speed
             ...(style && { style }),
             ...(background && { background }),
             ...(output_format && { output_format }),

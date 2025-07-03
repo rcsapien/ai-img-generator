@@ -23,16 +23,18 @@ import Image from "next/image";
 
 import { Dialog } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import Slideshow from "@/components/Slideshow";
+import { Switch } from "@/components/ui/switch";
+import { ProgressiveImage } from "@/components/ui/progressive-image";
+import { useStreamingImageGeneration } from "@/hooks/useStreamingImageGeneration";
 
 export default function ImageGeneratorPage() {
   const [prompt, setPrompt] = useState("");
-  const [inputImage, setInputImage] = useState(null);
+  const [inputImage, setInputImage] = useState<File | null>(null);
   const [background, setBackground] = useState("auto");
   const [size, setSize] = useState("1024x1024");
   const [n, setN] = useState(1);
   const [outputFormat] = useState("png");
-  const [quality] = useState("auto");
+  const [quality, setQuality] = useState("medium"); // Use 'medium' for faster generation
   const [moderation] = useState("auto");
   const [resultImages, setResultImages] = useState([]);
   // Edit modal state
@@ -45,8 +47,12 @@ export default function ImageGeneratorPage() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   
-  // Slideshow state
-  const [slideshowOpen, setSlideshowOpen] = useState(false);
+  // Expanded image state
+  const [expandedImage, setExpandedImage] = useState<number | null>(null);
+  
+  // Streaming state - enabled by default for much better UX
+  const [useStreaming, setUseStreaming] = useState(true);
+  const streamingGeneration = useStreamingImageGeneration();
 
   // Handle opening edit modal
   const handleOpenEdit = (idx: number) => {
@@ -94,22 +100,22 @@ export default function ImageGeneratorPage() {
 
   // NOTE: fileToBase64 was removed as it was unused
 
-  // Simple fake progress animation while request is pending
+  // Optimized progress - only for non-streaming requests
   useEffect(() => {
-    let timer;
-    if (loading) {
+    let timer: NodeJS.Timeout;
+    if (loading && !useStreaming) {
       setProgress(10);
       timer = setInterval(() => {
-        setProgress((p) => (p < 90 ? p + 10 : p));
-      }, 400);
+        setProgress((p) => (p < 90 ? p + 5 : p)); // Slower fake progress
+      }, 800); // Less frequent updates
     } else {
       setProgress(0);
     }
     return () => clearInterval(timer);
-  }, [loading]);
+  }, [loading, useStreaming]);
 
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (file) setInputImage(file);
   };
 
@@ -119,6 +125,21 @@ export default function ImageGeneratorPage() {
       return;
     }
 
+    // Reset streaming state if using streaming
+    if (useStreaming && !inputImage) {
+      streamingGeneration.reset();
+      
+      // Use streaming generation with official OpenAI format
+      await streamingGeneration.generateImages({
+        prompt,
+        n,
+        size,
+        quality // Already defaults to 'standard' for speed
+      });
+      return;
+    }
+
+    // Traditional generation
     setLoading(true);
     setResultImages([]);
 
@@ -144,9 +165,8 @@ export default function ImageGeneratorPage() {
           prompt,
           n,
           size,
-          background,
+          quality, // Now defaults to 'standard' for speed
           outputFormat,
-          quality,
           moderation,
         };
         console.log("[handleGenerate] Sending to /api/generate (prompt-only)");
@@ -157,11 +177,14 @@ export default function ImageGeneratorPage() {
         });
       }
       const data = await response.json();
+      console.log('[handleGenerate] API Response:', data);
       if (data.data) {
-        setResultImages(
-          data.data.map((img) => `data:image/${outputFormat};base64,${img.b64_json}`)
-        );
+        const imageUrls = data.data.map((img: { b64_json: string }) => `data:image/${outputFormat};base64,${img.b64_json}`);
+        console.log('[handleGenerate] Setting resultImages:', imageUrls.length, 'images');
+        console.log('[handleGenerate] First image preview:', imageUrls[0]?.substring(0, 100) + '...');
+        setResultImages(imageUrls);
       } else if (data.error) {
+        console.error('[handleGenerate] API Error:', data.error);
         alert(data.error);
       }
       setProgress(100);
@@ -199,84 +222,125 @@ export default function ImageGeneratorPage() {
             <Input id="image" type="file" accept="image/*" onChange={handleImageUpload} />
           </div>
 
-          {/* Quantity & Size */}
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          {/* Quantity, Size & Quality */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="quantity">Quantity</Label>
               <Input
                 id="quantity"
                 type="number"
                 min={1}
-                max={10}
+                max={4}
                 value={n}
                 onChange={(e) => setN(Number(e.target.value))}
               />
             </div>
-            <div className="space-y-2 col-span-1 md:col-span-2">
+            <div className="space-y-2">
               <Label htmlFor="size">Size</Label>
               <Select value={size} onValueChange={setSize}>
                 <SelectTrigger id="size">
                   <SelectValue placeholder="Select size" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1024x1024">1024 x 1024</SelectItem>
-                  <SelectItem value="1536x1024">1536 x 1024</SelectItem>
-                  <SelectItem value="1024x1536">1024 x 1536</SelectItem>
-                  <SelectItem value="auto">Auto</SelectItem>
+                  <SelectItem value="1024x1024">Square (1024²)</SelectItem>
+                  <SelectItem value="1536x1024">Landscape</SelectItem>
+                  <SelectItem value="1024x1536">Portrait</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="background">Background</Label>
-              <Select value={background} onValueChange={setBackground}>
-                <SelectTrigger id="background">
-                  <SelectValue placeholder="Select background" />
+              <Label htmlFor="quality">Quality/Speed</Label>
+              <Select value={quality} onValueChange={setQuality}>
+                <SelectTrigger id="quality">
+                  <SelectValue placeholder="Select quality" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="auto">Auto</SelectItem>
-                  <SelectItem value="transparent">Transparent</SelectItem>
-                  <SelectItem value="opaque">Opaque</SelectItem>
+                  <SelectItem value="low">⚡ Low (5-10s)</SelectItem>
+                  <SelectItem value="medium">🚀 Medium (8-15s)</SelectItem>
+                  <SelectItem value="high">🐌 High (25-40s)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
 
+          {/* Streaming toggle */}
+          {!inputImage && (
+            <div className="flex items-center space-x-3">
+              <Switch
+                id="streaming"
+                checked={useStreaming}
+                onCheckedChange={setUseStreaming}
+              />
+              <Label htmlFor="streaming" className="text-sm">
+                ⚡ Progressive Loading (See images form in real-time)
+              </Label>
+            </div>
+          )}
+
           {/* Generate button */}
           <Button
             className="w-full gap-2"
             onClick={handleGenerate}
-            disabled={loading}
+            disabled={loading || streamingGeneration.isStreaming}
           >
-            {loading && <Loader2 className="h-4 w-4 animate-spin" />} Generate
+            {(loading || streamingGeneration.isStreaming) && <Loader2 className="h-4 w-4 animate-spin" />} 
+            Generate
           </Button>
 
           {/* Progress bar */}
           {loading && <Progress value={progress} className="h-2" />}
+          
+          {/* Streaming error */}
+          {streamingGeneration.error && (
+            <div className="text-red-500 text-sm">
+              Error: {streamingGeneration.error}
+            </div>
+          )}
         </CardContent>
       </Card>
 
       {/* Results */}
       <AnimatePresence>
-        {resultImages.length > 0 && (
+        {(() => {
+          console.log('[Render] resultImages:', resultImages.length, 'streaming:', Object.keys(streamingGeneration.images).length);
+          return (resultImages.length > 0 || Object.keys(streamingGeneration.images).length > 0);
+        })() && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.4 }}
-            className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-10"
+            className="grid grid-cols-1 gap-6 mt-10 sm:grid-cols-2 sm:mobile-stack"
           >
+            {/* Traditional results */}
             {resultImages.map((src, idx) => (
-              <Card key={idx} className="overflow-hidden">
+              <Card key={`traditional-${idx}`} className="overflow-hidden">
                 <CardContent className="p-0">
-                  <div className="relative w-full aspect-square">
-                    <Image
+                  <div 
+                    className="relative w-full cursor-pointer transition-all duration-300 group"
+                    style={{ 
+                      aspectRatio: expandedImage === idx ? '4/3' : '1/1',
+                      maxHeight: expandedImage === idx ? '600px' : '400px'
+                    }}
+                    onClick={() => setExpandedImage(expandedImage === idx ? null : idx)}
+                  >
+                    <ProgressiveImage
                       src={src}
                       alt={`Result ${idx + 1}`}
-                      className="object-cover"
+                      className={`transition-all duration-300 ${
+                        expandedImage === idx ? 'object-contain' : 'object-cover'
+                      }`}
                       fill
                       priority
                       unoptimized
                     />
+                    
+                    {/* Hover overlay */}
+                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-300 flex items-center justify-center">
+                      <span className="text-white text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                        {expandedImage === idx ? 'Collapse' : 'Expand'}
+                      </span>
+                    </div>
                   </div>
                   <a
                     href={src}
@@ -298,7 +362,7 @@ export default function ImageGeneratorPage() {
                     <div className="mt-4">
                       <Label>Edited Image:</Label>
                       <div className="relative w-full aspect-square border border-dashed border-gray-400 mt-2">
-                        <Image
+                        <ProgressiveImage
                           src={editedImages[idx]}
                           alt={`Edited Result ${idx + 1}`}
                           className="object-cover"
@@ -312,36 +376,68 @@ export default function ImageGeneratorPage() {
                 </CardContent>
               </Card>
             ))}
+
+            {/* Streaming results */}
+            {Object.entries(streamingGeneration.images).map(([imageIndex, src]) => (
+              <Card key={`streaming-${imageIndex}`} className="overflow-hidden">
+                <CardContent className="p-0">
+                  <div 
+                    className="relative w-full cursor-pointer transition-all duration-300 group"
+                    style={{ 
+                      aspectRatio: expandedImage === parseInt(imageIndex) ? '4/3' : '1/1',
+                      maxHeight: expandedImage === parseInt(imageIndex) ? '600px' : '400px'
+                    }}
+                    onClick={() => {
+                      const idx = parseInt(imageIndex);
+                      setExpandedImage(expandedImage === idx ? null : idx);
+                    }}
+                  >
+                    <ProgressiveImage
+                      src={src}
+                      alt={`Streaming Result ${parseInt(imageIndex) + 1}`}
+                      className={`transition-all duration-300 ${
+                        expandedImage === parseInt(imageIndex) ? 'object-contain' : 'object-cover'
+                      }`}
+                      fill
+                      priority
+                      unoptimized
+                      showLoadingSpinner={streamingGeneration.isStreaming}
+                    />
+                    
+                    {/* Streaming indicator and progress */}
+                    {streamingGeneration.isStreaming && (
+                      <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded-full">
+                        {streamingGeneration.progress[parseInt(imageIndex)] 
+                          ? `${Math.round(streamingGeneration.progress[parseInt(imageIndex)])}%`
+                          : 'Streaming...'}
+                      </div>
+                    )}
+                    
+                    {/* Hover overlay */}
+                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-300 flex items-center justify-center">
+                      <span className="text-white text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                        {expandedImage === parseInt(imageIndex) ? 'Collapse' : 'Expand'}
+                      </span>
+                    </div>
+                  </div>
+                  <a
+                    href={src}
+                    download={`streaming_image_${parseInt(imageIndex) + 1}.${outputFormat}`}
+                    className="block text-center py-2 hover:underline"
+                  >
+                    Download Image {parseInt(imageIndex) + 1}
+                  </a>
+                </CardContent>
+              </Card>
+            ))}
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Generate Slideshow Button */}
-      {resultImages.length > 0 && (
-        <div className="mt-8 text-center">
-          <Button 
-            onClick={() => setSlideshowOpen(true)}
-            className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold py-3 px-6 rounded-full shadow-lg transition-all duration-300 transform hover:scale-105"
-            size="lg"
-          >
-            Generate Slideshow
-          </Button>
-        </div>
-      )}
-
-      {/* Slideshow Component */}
-      <Slideshow 
-        images={[
-          ...resultImages,
-          ...Object.values(editedImages)
-        ].filter(Boolean)}
-        isOpen={slideshowOpen}
-        onClose={() => setSlideshowOpen(false)}
-      />
 
       {/* Edit Modal */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <div className="fixed inset-0 bg-black bg-opacity-30 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 bg-black bg-opacity-30 z-40 flex items-center justify-center">
           <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
             <h2 className="text-xl font-bold mb-4">Edit Image</h2>
             <div className="mb-2">

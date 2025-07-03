@@ -1,8 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// POST /api/song-storyline
-// Body: { songName: string }
-// Returns: { storyline: string }
+// YouTube search function
+async function searchYouTube(songName: string) {
+  const youtubeApiKey = process.env.YOUTUBE_API_KEY;
+  if (!youtubeApiKey) {
+    console.log('YouTube API key not found, skipping search');
+    return null;
+  }
+
+  try {
+    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(songName + ' official music video')}&type=video&maxResults=5&key=${youtubeApiKey}`;
+    
+    console.log(`Searching YouTube for: ${songName}`);
+    const response = await fetch(searchUrl);
+    const data = await response.json();
+    
+    if (!response.ok) {
+      console.error('YouTube API error:', data);
+      return null;
+    }
+
+    if (data.items && data.items.length > 0) {
+      const video = data.items[0];
+      console.log(`Found YouTube video: ${video.snippet.title}`);
+      return {
+        videoId: video.id.videoId,
+        title: video.snippet.title,
+        channelTitle: video.snippet.channelTitle,
+        description: video.snippet.description,
+        thumbnails: video.snippet.thumbnails
+      };
+    }
+  } catch (error) {
+    console.error('YouTube search error:', error);
+  }
+  
+  return null;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,74 +45,173 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'songName is required' }, { status: 400 });
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: 'Missing OpenAI API key' }, { status: 401 });
+    const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+    if (!anthropicApiKey) {
+      return NextResponse.json({ error: 'Missing Anthropic API key' }, { status: 401 });
     }
 
-    // Construct prompt for o3 reasoning model. We explicitly ask the model to reference the song's main performer/character in each scene so that downstream image generation is consistent.
-    const systemPrompt = `You are an award-winning music-video director and creative writer. Given the SONG NAME, create a vivid, scene-by-scene storyboard for a 30-second music video inspired by the song.\n\nFormatting requirements (STRICT):\n• EXACTLY 15 blocks covering 2-second intervals (0–2s, 2–4s, …, 28–30s – OUTRO).\n• For each block provide:\n  – A very short scene tag (same line as timestamp).\n  – A separate sentence (1-2) describing visuals in rich cinematic detail.\n• Always specify WHO is on screen and what they are doing. If the song has a well-known artist (e.g., Kendrick Lamar), depict them explicitly unless their absence is conceptually intentional—in that case, briefly note why.\n• Use evocative language that focuses on visuals, camera movement, lighting, colour, and mood.\n• Maintain narrative cohesion across the 30 seconds.\n\nRespond ONLY with the formatted storyline text. No markdown, no code fences, no extra commentary.`;
+    // Search YouTube for the song
+    const youtubeVideo = await searchYouTube(songName);
+    
+    let songContext = '';
+    if (youtubeVideo) {
+      songContext = `YouTube Video Found: "${youtubeVideo.title}" by ${youtubeVideo.channelTitle}\nDescription: ${youtubeVideo.description.substring(0, 300)}...`;
+      console.log('YouTube context:', songContext.substring(0, 200) + '...');
+    }
 
-    const inputText = `${systemPrompt}\n\nSONG NAME: ${songName}`;
+    const prompt = `You are an award-winning music-video director and creative writer. Create a vivid, scene-by-scene storyboard for a 30-second music video inspired by the song "${songName}".
 
-    const body = {
-      model: 'o3',
-      input: inputText,
-      max_output_tokens: 1024,
-    };
+${songContext ? `SONG CONTEXT: ${songContext}\n` : ''}
 
-    console.log('openai request body', body);
+IMPORTANT: You have access to web search capabilities. Search for the song's lyrics and content structure to create an accurate storyboard that reflects the actual song narrative and imagery.
 
-    const openaiRes = await fetch('https://api.openai.com/v1/responses', {
+SEARCH INSTRUCTIONS: Use web search to find lyrics and song details from sites like:
+- AZLyrics, Genius, LyricFind, MetroLyrics for complete lyrics
+- Song structure analysis (verse/chorus/bridge timing)
+- Specific imagery, metaphors, and narrative elements mentioned in the lyrics
+- Key phrases and visual references that should be represented in the video
+
+CHARACTER CONSISTENCY RULES:
+- Always use full names in scene descriptions  
+- NEVER use pronouns like "he", "she", "him", "her" when referring to people
+- Example: Write "Kendrick Lamar walks" not "He walks"
+
+STORYBOARD REQUIREMENTS:
+• EXACTLY 15 blocks covering 2-second intervals (0–2s, 2–4s, …, 28–30s – OUTRO)
+• For each block provide:
+  – A very short scene tag (same line as timestamp)
+  – A separate sentence (1-2) describing visuals in rich cinematic detail
+• Use evocative language focusing on visuals, camera movement, lighting, color, and mood
+• Maintain narrative cohesion across the 30 seconds
+• Draw inspiration from the artist's typical themes and visual aesthetic
+• Create original content - do not quote or reference specific lyrics
+
+Respond ONLY with the formatted storyline text. No markdown, no code fences, no commentary.`;
+
+    console.log(`Generating storyline for song: ${songName}`);
+    console.log('Prompt being sent to Claude:', prompt.substring(0, 200) + '...');
+    console.log('Full prompt length:', prompt.length, 'characters');
+
+    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+        'x-api-key': anthropicApiKey,
+        'anthropic-version': '2023-06-01'
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 3000,
+        tools: [
+          {
+            type: "web_search_20250305",
+            name: "web_search",
+            max_uses: 5
+          }
+        ],
+        messages: [
+          { role: 'user', content: prompt }
+        ]
+      }),
     });
 
-    const data = await openaiRes.json();
-    console.dir(data, { depth: null }); // temporary inspect
-
-    if (!openaiRes.ok) {
-      console.error('OpenAI API error:', data);
-      return NextResponse.json({
-        error: 'OpenAI request failed',
-        details: data?.error?.message || 'Unknown error',
-        status: openaiRes.status,
-      }, { status: openaiRes.status });
-    }
-
-    let storyline = '';
-    if (typeof data.output_text === 'string') {
-      storyline = data.output_text.trim();
-    }
-
-    if (!storyline && Array.isArray(data.output)) {
-      for (const item of data.output) {
-        if (item.type === 'output_text' && typeof item.text === 'string') {
-          storyline = item.text.trim();
-          break;
-        }
-        if (item.type === 'message' && Array.isArray(item.content)) {
-          const txtNode = item.content.find((c: { type: string; text?: string }) => c.type === 'output_text' && typeof c.text === 'string');
-          if (txtNode?.text) {
-            storyline = txtNode.text.trim();
-            break;
-          }
+    const data = await claudeRes.json();
+    console.log('Claude response status:', claudeRes.status);
+    console.log('Claude response headers:', Object.fromEntries(claudeRes.headers.entries()));
+    console.log('Claude response data:', JSON.stringify(data, null, 2));
+    
+    // Check if Claude used web search capabilities
+    console.log('🔍 CHECKING FOR WEB SEARCH USAGE...');
+    
+    if (data.content && Array.isArray(data.content)) {
+      console.log('Response content blocks:', data.content.length);
+      
+      // Look for tool use blocks (web searches)
+      const toolUseBlocks = data.content.filter((block: { type: string }) => block.type === 'tool_use');
+      if (toolUseBlocks.length > 0) {
+        console.log('🌐 WEB SEARCH TOOL USAGE DETECTED!');
+        console.log('Number of web searches performed:', toolUseBlocks.length);
+        toolUseBlocks.forEach((block: { name: string; input: unknown; id: string }, index: number) => {
+          console.log(`Search ${index + 1}:`, {
+            tool: block.name,
+            input: block.input,
+            id: block.id
+          });
+        });
+      }
+      
+      // Look for tool result blocks (search results)
+      const toolResultBlocks = data.content.filter((block: { type: string }) => block.type === 'tool_result');
+      if (toolResultBlocks.length > 0) {
+        console.log('📊 WEB SEARCH RESULTS DETECTED!');
+        toolResultBlocks.forEach((block: { content: unknown; tool_use_id: string }, index: number) => {
+          console.log(`Search Result ${index + 1}:`, {
+            tool_use_id: block.tool_use_id,
+            content_length: typeof block.content === 'string' ? block.content.length : 0,
+            content_preview: typeof block.content === 'string' ? 
+              block.content.substring(0, 200) + '...' : 
+              'Non-string content'
+          });
+        });
+      }
+      
+      // Check text content for web search references
+      const textBlocks = data.content.filter((block: { type: string }) => block.type === 'text');
+      if (textBlocks.length > 0) {
+        const allText = textBlocks.map((block: { text: string }) => block.text).join(' ');
+        
+        const webSearchIndicators = [
+          'according to web search',
+          'based on search results',
+          'found online',
+          'search indicates',
+          'web sources',
+          'according to sources',
+          'lyrics analysis',
+          'song information found'
+        ];
+        
+        const foundIndicators = webSearchIndicators.filter(indicator => 
+          allText.toLowerCase().includes(indicator.toLowerCase())
+        );
+        
+        if (foundIndicators.length > 0) {
+          console.log('🔍 WEB SEARCH REFERENCES IN TEXT - Found:', foundIndicators);
+        } else {
+          console.log('❌ No web search references found in text content');
         }
       }
+    } else {
+      console.log('❌ No content blocks found in response');
     }
 
-    console.log('extracted storyline length', storyline.length);
+    if (!claudeRes.ok) {
+      console.error('Claude API error:', data);
+      return NextResponse.json({
+        error: 'Claude request failed',
+        details: data?.error?.message || 'Unknown error',
+      }, { status: claudeRes.status });
+    }
+
+    // Extract storyline from text blocks (skip tool use/result blocks)
+    const textBlocks = data.content?.filter((block: { type: string }) => block.type === 'text') || [];
+    const storyline = textBlocks.map((block: { text: string }) => block.text).join('\n').trim();
+    
+    console.log('Generated storyline length:', storyline.length);
+    console.log('Generated storyline preview:', storyline.substring(0, 300) + '...');
+    console.log('Full storyline content for analysis:', storyline);
 
     if (!storyline) {
       return NextResponse.json({ error: 'No storyline returned from model' }, { status: 500 });
     }
 
-    return NextResponse.json({ storyline });
+    // Return both storyline and YouTube video info
+    return NextResponse.json({ 
+      storyline,
+      youtubeVideo: youtubeVideo || null
+    });
   } catch (err) {
+    console.error('Error:', err);
     return NextResponse.json({ error: 'Unexpected error', details: String(err) }, { status: 500 });
   }
 }
