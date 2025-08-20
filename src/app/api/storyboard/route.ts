@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
   try {
-    const { masterPrompt, lyrics, storyline } = await req.json();
+    const { masterPrompt, lyrics, storyline, artistName } = await req.json();
 
     if (!masterPrompt || !storyline) {
       return NextResponse.json(
@@ -21,9 +21,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Build Chat completion prompt to produce exactly 10 scenes for a 30-second video.
-    const systemPrompt = `You are an award-winning music-video director. Given the LYRICS and STORYLINE, produce a storyboard consisting of EXACTLY 10 JSON objects. Each object MUST follow this strict schema: {\n  \"scene_name\": string,\n  \"time_stamp\": string,\n  \"scene_description\": string,\n  \"lyric_excerpt\": string\n}.\n• time_stamp must be in mm:ss format between 00:00 and 00:29, sequential and evenly covering the 30-second runtime.\n• lyric_excerpt should contain the exact lyric line (or partial line) being sung at that timestamp, without leading timestamps or quotes. Keep it concise.\n• scene_name ~3 words; scene_description 1-2 vivid sentences.\n\nRespond ONLY with the raw JSON array, without markdown/code fences/extra text.`;
+    const systemPrompt = `You are an award-winning music-video director. Given the LYRICS and STORYLINE, produce a storyboard consisting of EXACTLY 10 JSON objects. Each object MUST follow this strict schema: {\n  \"scene_name\": string,\n  \"time_stamp\": string,\n  \"scene_description\": string,\n  \"lyric_excerpt\": string\n}.\n• time_stamp must be in mm:ss format between 00:00 and 00:29, sequential and evenly covering the 30-second runtime.\n• lyric_excerpt should contain the exact lyric line (or partial line) being sung at that timestamp, without leading timestamps or quotes. Keep it concise.\n• scene_name ~3 words; scene_description 1-2 vivid sentences.\n\nCRITICAL CHARACTER NAMING RULES:\n• ALWAYS use full names when referring to specific people (especially the artist)\n• If the artist "${artistName || 'the artist'}" appears, use their full name EVERY TIME\n• NEVER use pronouns (he/she/they) for specific people - always use their full name\n• This ensures consistency across all generated images\n\nRespond ONLY with the raw JSON array, without markdown/code fences/extra text.`;
 
-    const userPrompt = `LYRICS:\n${lyrics}\n\nSTORYLINE:\n${storyline}`;
+    const userPrompt = `${artistName ? `ARTIST NAME: ${artistName}\n\n` : ''}LYRICS:\n${lyrics || 'Not provided'}\n\nSTORYLINE:\n${storyline}`;
 
     const body = {
       model: 'gpt-4o-mini',

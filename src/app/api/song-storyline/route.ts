@@ -44,6 +44,15 @@ export async function POST(req: NextRequest) {
     if (!songName) {
       return NextResponse.json({ error: 'songName is required' }, { status: 400 });
     }
+    
+    // Extract artist name from song name if provided in format "Song - Artist" or "Artist - Song"
+    let artistName = '';
+    if (songName.includes(' - ')) {
+      const parts = songName.split(' - ');
+      // Common formats: "Artist - Song" or "Song - Artist"
+      // We'll try to detect which one based on search results
+      artistName = parts[0]; // Will be refined after YouTube search
+    }
 
     const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
     if (!anthropicApiKey) {
@@ -55,13 +64,24 @@ export async function POST(req: NextRequest) {
     
     let songContext = '';
     if (youtubeVideo) {
+      // Extract artist from YouTube channel title if not already set
+      if (!artistName && youtubeVideo.channelTitle) {
+        // Remove "VEVO", "Official", etc. from channel names
+        artistName = youtubeVideo.channelTitle
+          .replace(/VEVO$/i, '')
+          .replace(/Official$/i, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
       songContext = `YouTube Video Found: "${youtubeVideo.title}" by ${youtubeVideo.channelTitle}\nDescription: ${youtubeVideo.description.substring(0, 300)}...`;
       console.log('YouTube context:', songContext.substring(0, 200) + '...');
+      console.log('Extracted artist name:', artistName);
     }
 
-    const prompt = `You are an award-winning music-video director and creative writer. Create a vivid, scene-by-scene storyboard for a 30-second music video inspired by the song "${songName}".
+    const prompt = `You are an award-winning music-video director and creative writer. Create a vivid, scene-by-scene storyboard for a 30-second music video inspired by the song "${songName}"${artistName ? ` by ${artistName}` : ''}.
 
 ${songContext ? `SONG CONTEXT: ${songContext}\n` : ''}
+${artistName ? `ARTIST NAME: ${artistName}\n` : ''}
 
 IMPORTANT: You have access to web search capabilities. Search for the song's lyrics and content structure to create an accurate storyboard that reflects the actual song narrative and imagery.
 
@@ -70,11 +90,14 @@ SEARCH INSTRUCTIONS: Use web search to find lyrics and song details from sites l
 - Song structure analysis (verse/chorus/bridge timing)
 - Specific imagery, metaphors, and narrative elements mentioned in the lyrics
 - Key phrases and visual references that should be represented in the video
+- The artist's full name if not already provided
 
-CHARACTER CONSISTENCY RULES:
-- Always use full names in scene descriptions  
-- NEVER use pronouns like "he", "she", "him", "her" when referring to people
-- Example: Write "Kendrick Lamar walks" not "He walks"
+CHARACTER CONSISTENCY RULES - CRITICAL FOR IMAGE GENERATION:
+- ALWAYS use the artist's full name "${artistName || '[Artist Name]'}" when they appear in scenes
+- NEVER use pronouns (he/she/him/her/they) when referring to the artist or any specific person
+- ALWAYS use full names for any other specific people mentioned
+- Example: Write "${artistName || 'The artist'} walks through the door" not "He walks through the door"
+- If the artist appears in multiple scenes, use their full name EVERY TIME
 
 STORYBOARD REQUIREMENTS:
 • EXACTLY 15 blocks covering 2-second intervals (0–2s, 2–4s, …, 28–30s – OUTRO)
@@ -205,10 +228,11 @@ Respond ONLY with the formatted storyline text. No markdown, no code fences, no 
       return NextResponse.json({ error: 'No storyline returned from model' }, { status: 500 });
     }
 
-    // Return both storyline and YouTube video info
+    // Return storyline, YouTube video info, and artist name
     return NextResponse.json({ 
       storyline,
-      youtubeVideo: youtubeVideo || null
+      youtubeVideo: youtubeVideo || null,
+      artistName: artistName || null
     });
   } catch (err) {
     console.error('Error:', err);

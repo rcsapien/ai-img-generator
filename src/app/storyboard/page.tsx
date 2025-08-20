@@ -98,6 +98,8 @@ export default function StoryboardPage() {
   const [youtubeVideo, setYoutubeVideo] = useState<YouTubeVideo | null>(null);
   const [expandedScene, setExpandedScene] = useState<number | null>(null);
   const [useStreaming, setUseStreaming] = useState(true);
+  const [artistName, setArtistName] = useState("");
+  const [masterContext, setMasterContext] = useState("");
   
   const { generateImages, isStreaming, partialImages, finalImages, error: streamingError } = useStreamingImageGeneration();
 
@@ -139,7 +141,8 @@ export default function StoryboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           masterPrompt: rawPrompt, 
-          songName
+          songName,
+          artist: artistName
         }),
       });
       
@@ -152,6 +155,30 @@ export default function StoryboardPage() {
     } catch (error) {
       console.error("Error transforming master prompt:", error);
       return rawPrompt; // Fallback to original prompt
+    }
+  };
+
+  const extractMasterContext = async (storyline: string) => {
+    try {
+      const res = await fetch("/api/extract-context", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          storyline,
+          artistName,
+          songName
+        }),
+      });
+      
+      if (!res.ok) {
+        throw new Error("Failed to extract master context");
+      }
+      
+      const data = await res.json();
+      return data.masterContext;
+    } catch (error) {
+      console.error("Error extracting master context:", error);
+      return ""; // Fallback to empty context
     }
   };
 
@@ -172,10 +199,16 @@ export default function StoryboardPage() {
       console.log('=== END TRANSFORMATION ===');
       setTransformedMasterPrompt(transformed);
 
+      // Extract master context from storyline
+      console.log('=== EXTRACTING MASTER CONTEXT ===');
+      const context = await extractMasterContext(storyline);
+      console.log('Master context:', context);
+      setMasterContext(context);
+
       const sbRes = await fetch("/api/storyboard", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ masterPrompt, storyline }),
+        body: JSON.stringify({ masterPrompt, storyline, artistName }),
       });
       const storyboard: Scene[] = await sbRes.json();
       if (!Array.isArray(storyboard)) {
@@ -202,9 +235,14 @@ export default function StoryboardPage() {
         setProgress(Math.round((i / scenesToProcess.length) * 100));
         
         try {
-          const combinedPrompt = `SCENE: ${scene.scene_description}
+          const combinedPrompt = `MASTER CONTEXT: ${context || 'Contemporary music video setting'}
 
-VISUAL DIRECTION: ${transformed}`;
+CURRENT SCENE: ${scene.scene_description}
+${artistName ? `\nARTIST: ${artistName} (use full name when the artist appears)` : ''}
+
+VISUAL STYLE: ${transformed}
+
+IMPORTANT: Maintain consistency with the master context while depicting this specific scene.`;
           console.log(`Scene ${i + 1} combined prompt:`, combinedPrompt);
           
           console.log(`[handleGenerate] Calling generateImage for scene ${i + 1}...`);
@@ -263,9 +301,17 @@ VISUAL DIRECTION: ${transformed}`;
     try {      
       // Use the already transformed master prompt if available, otherwise transform it
       const promptToUse = transformedMasterPrompt || await transformMasterPrompt(masterPrompt);
-      const combinedPrompt = `SCENE: ${scene.scene_description}
+      // Extract context if not already available
+      const contextToUse = masterContext || await extractMasterContext(storyline);
+      
+      const combinedPrompt = `MASTER CONTEXT: ${contextToUse || 'Contemporary music video setting'}
 
-VISUAL DIRECTION: ${promptToUse}`;
+CURRENT SCENE: ${scene.scene_description}
+${artistName ? `\nARTIST: ${artistName} (use full name when the artist appears)` : ''}
+
+VISUAL STYLE: ${promptToUse}
+
+IMPORTANT: Maintain consistency with the master context while depicting this specific scene.`;
       console.log(`Regenerating scene ${idx + 1} with prompt:`, combinedPrompt);
       const newImg = await generateImage(combinedPrompt);
       setScenes((prev) => {
@@ -285,6 +331,8 @@ VISUAL DIRECTION: ${promptToUse}`;
     setMasterPrompt("claymation");
     setStoryline(PRESET_STORYLINE);
     setSongName("");
+    setArtistName("");
+    setMasterContext(""); // Clear master context for preset
   };
 
   const generateStorylineFromSong = async () => {
@@ -310,6 +358,17 @@ VISUAL DIRECTION: ${promptToUse}`;
       if (data.storyline) {
         setStoryline(data.storyline);
         setYoutubeVideo(data.youtubeVideo);
+        if (data.artistName) {
+          setArtistName(data.artistName);
+        }
+        
+        // Proactively extract master context for better UX
+        console.log('Extracting master context from generated storyline...');
+        const context = await extractMasterContext(data.storyline);
+        if (context) {
+          setMasterContext(context);
+          console.log('Master context extracted:', context);
+        }
       } else {
         throw new Error("No storyline returned");
       }
@@ -414,6 +473,9 @@ VISUAL DIRECTION: ${promptToUse}`;
               <div className="bg-gray-900 p-4 space-y-2">
                 <div className="text-sm font-mono">{youtubeVideo.title}</div>
                 <div className="text-xs text-gray-400">by {youtubeVideo.channelTitle}</div>
+                {artistName && (
+                  <div className="text-xs text-green-400">Artist detected: {artistName}</div>
+                )}
                 <div className="text-xs text-gray-500 leading-relaxed">
                   {youtubeVideo.description.substring(0, 200)}...
                 </div>
@@ -479,6 +541,21 @@ VISUAL DIRECTION: ${promptToUse}`;
               <div className="bg-gray-900 p-4 text-xs text-gray-400 leading-relaxed">
                 {transformedMasterPrompt}
               </div>
+            </div>
+          )}
+
+          {/* Show master context if available */}
+          {masterContext && (
+            <div className="space-y-3 border-t border-gray-800 pt-8">
+              <label className="block text-xs uppercase tracking-wider text-gray-500">
+                Master Scene Context
+              </label>
+              <div className="bg-gray-900 p-4 text-xs text-gray-400 leading-relaxed">
+                {masterContext}
+              </div>
+              <p className="text-xs text-gray-600">
+                This context is included with every scene to maintain visual consistency
+              </p>
             </div>
           )}
 
